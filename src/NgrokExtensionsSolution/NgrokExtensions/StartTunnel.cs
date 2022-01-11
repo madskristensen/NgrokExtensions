@@ -53,10 +53,13 @@ namespace NgrokExtensions
 
             var commandService =
                 ServiceProvider.GetService(typeof(IMenuCommandService)) as OleMenuCommandService;
-            if (commandService == null) return;
+            if (commandService == null)
+            {
+                return;
+            }
 
             var menuCommandId = new CommandID(CommandSet, CommandId);
-            var menuItem = new MenuCommand(this.MenuItemCallback, menuCommandId);
+            var menuItem = new MenuCommand(MenuItemCallback, menuCommandId);
             commandService.AddCommand(menuItem);
         }
 
@@ -88,7 +91,7 @@ namespace NgrokExtensions
         /// <param name="e">Event args.</param>
         private void MenuItemCallback(object sender, EventArgs e)
         {
-            var webApps = GetWebApps();
+            Dictionary<string, WebAppConfig> webApps = GetWebApps();
 
             if (webApps.Count == 0)
             {
@@ -143,7 +146,7 @@ namespace NgrokExtensions
         private void ShowErrorMessage(string message)
         {
             VsShellUtilities.ShowMessageBox(
-                this.ServiceProvider,
+                ServiceProvider,
                 message,
                 "ngrok",
                 OLEMSGICON.OLEMSGICON_CRITICAL,
@@ -154,7 +157,7 @@ namespace NgrokExtensions
         private bool AskUserYesNoQuestion(string message)
         {
             var result = VsShellUtilities.ShowMessageBox(
-                this.ServiceProvider,
+                ServiceProvider,
                 message,
                 "ngrok",
                 OLEMSGICON.OLEMSGICON_QUERY,
@@ -167,17 +170,26 @@ namespace NgrokExtensions
         private Dictionary<string, WebAppConfig> GetWebApps()
         {
             var webApps = new Dictionary<string, WebAppConfig>();
-            var projects = GetSolutionProjects();
-            if (projects == null) return webApps;
+            IEnumerable<Project> projects = GetSolutionProjects();
+            if (projects == null)
+            {
+                return webApps;
+            }
 
             foreach (Project project in projects)
             {
-                if (project.Properties == null) continue; // Project not loaded yet
+                if (project.Properties == null)
+                {
+                    continue; // Project not loaded yet
+                }
 
                 foreach (Property prop in project.Properties)
                 {
                     DebugWriteProp(prop);
-                    if (!PortPropertyNames.Contains(prop.Name)) continue;
+                    if (!PortPropertyNames.Contains(prop.Name))
+                    {
+                        continue;
+                    }
 
                     WebAppConfig webApp;
 
@@ -197,7 +209,11 @@ namespace NgrokExtensions
                     else
                     {
                         webApp = new WebAppConfig(prop.Value.ToString());
-                        if (!webApp.IsValid) continue;
+                        if (!webApp.IsValid)
+                        {
+                            continue;
+                        }
+
                         if (IsAspNetCoreProject(prop.Name))
                         {
                             LoadOptionsFromAppSettingsJson(project, webApp);
@@ -224,11 +240,14 @@ namespace NgrokExtensions
         {
             foreach (ProjectItem item in project.ProjectItems)
             {
-                if (item.Name.ToLower() != "web.config") continue;
+                if (item.Name.ToLower() != "web.config")
+                {
+                    continue;
+                }
 
                 var path = item.FileNames[0];
                 var webConfig = XDocument.Load(path);
-                var appSettings = webConfig.Descendants("appSettings").FirstOrDefault();
+                XElement appSettings = webConfig.Descendants("appSettings").FirstOrDefault();
                 webApp.SubDomain = appSettings?.Descendants("add")
                     .FirstOrDefault(x => x.Attribute("key")?.Value == NgrokSubdomainSettingName)
                     ?.Attribute("value")?.Value;
@@ -241,16 +260,22 @@ namespace NgrokExtensions
             // Read the settings from the project's appsettings.json first
             foreach (ProjectItem item in project.ProjectItems)
             {
-                if (item.Name.ToLower() != "appsettings.json") continue;
+                if (item.Name.ToLower() != "appsettings.json")
+                {
+                    continue;
+                }
 
                 ReadOptionsFromJsonFile(item.FileNames[0], webApp);
             }
 
             // Override any additional settings from the secrets.json file if it exists
             var userSecretsId = project.Properties.OfType<Property>()
-                .FirstOrDefault(x => x.Name.Equals("UserSecretsId", StringComparison.OrdinalIgnoreCase))?.Value as String;
+                .FirstOrDefault(x => x.Name.Equals("UserSecretsId", StringComparison.OrdinalIgnoreCase))?.Value as string;
 
-            if (string.IsNullOrEmpty(userSecretsId)) return;
+            if (string.IsNullOrEmpty(userSecretsId))
+            {
+                return;
+            }
 
             var appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             var secretsFile = Path.Combine(appdata, "Microsoft", "UserSecrets", userSecretsId, "secrets.json");
@@ -260,12 +285,15 @@ namespace NgrokExtensions
 
         private static void ReadOptionsFromJsonFile(string path, WebAppConfig webApp)
         {
-            if (!File.Exists(path)) return;
+            if (!File.Exists(path))
+            {
+                return;
+            }
 
             var json = File.ReadAllText(path);
             var appSettings = JsonConvert.DeserializeAnonymousType(json,
                 new { IsEncrypted = false, Values = new Dictionary<string, string>() });
-            
+
             if (appSettings.Values != null && appSettings.Values.TryGetValue(NgrokSubdomainSettingName, out var subdomain))
             {
                 webApp.SubDomain = subdomain;
@@ -286,14 +314,14 @@ namespace NgrokExtensions
 
         private IEnumerable<Project> GetSolutionProjects()
         {
-            var solution = (ServiceProvider.GetService(typeof(SDTE)) as DTE)?.Solution;
+            Solution solution = (ServiceProvider.GetService(typeof(SDTE)) as DTE)?.Solution;
             return solution == null ? null : ProcessProjects(solution.Projects.Cast<Project>());
         }
 
         private static IEnumerable<Project> ProcessProjects(IEnumerable<Project> projects)
         {
             var newProjectsList = new List<Project>();
-            foreach (var p in projects)
+            foreach (Project p in projects)
             {
 
                 if (p.Kind == ProjectKinds.vsProjectKindSolutionFolder)

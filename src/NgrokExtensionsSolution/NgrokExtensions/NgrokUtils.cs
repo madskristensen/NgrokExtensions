@@ -10,6 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -18,7 +19,7 @@ namespace NgrokExtensions
     public class NgrokUtils
     {
         public const string NgrokNotFoundMessage = "ngrok executable not found. Configure the path in the via the add-in options or add the location to your PATH.";
-        private static Version MinimumVersion = new Version("2.3.34");
+        private static readonly Version MinimumVersion = new Version("2.3.34");
         private readonly Dictionary<string, WebAppConfig> _webApps;
         private readonly Func<string, Task> _showErrorFunc;
         private readonly HttpClient _ngrokApi;
@@ -26,7 +27,7 @@ namespace NgrokExtensions
         private readonly NgrokProcess _ngrokProcess;
 
         public NgrokUtils(Dictionary<string, WebAppConfig> webApps, string exePath,
-            Func<string, Task> asyncShowErrorFunc, 
+            Func<string, Task> asyncShowErrorFunc,
             HttpClient client = null, NgrokProcess ngrokProcess = null)
         {
             _webApps = webApps;
@@ -40,10 +41,16 @@ namespace NgrokExtensions
 
         public bool NgrokIsInstalled()
         {
-            if (!_ngrokProcess.IsInstalled()) return false;
+            if (!_ngrokProcess.IsInstalled())
+            {
+                return false;
+            }
 
             var versionString = _ngrokProcess.GetNgrokVersion();
-            if (versionString == null) return false;
+            if (versionString == null)
+            {
+                return false;
+            }
 
             var version = new Version(versionString);
             return version.CompareTo(MinimumVersion) >= 0;
@@ -94,12 +101,19 @@ namespace NgrokExtensions
 
         private async Task StartNgrokAsync(bool retry = false)
         {
-            if (await CanGetTunnelList()) return;
+            if (await CanGetTunnelList())
+            {
+                return;
+            }
 
             _ngrokProcess.StartNgrokProcess();
             await Task.Delay(250);
 
-            if (await CanGetTunnelList(retry:true)) return;
+            if (await CanGetTunnelList(retry: true))
+            {
+                return;
+            }
+
             await _showErrorFunc("Cannot start ngrok. Is it installed and in your PATH?");
         }
 
@@ -111,19 +125,22 @@ namespace NgrokExtensions
             }
             catch
             {
-                if (retry) throw;
+                if (retry)
+                {
+                    throw;
+                }
             }
             return (_tunnels != null);
         }
 
         private async Task GetTunnelList()
         {
-            var response = await _ngrokApi.GetAsync("/api/tunnels");
+            HttpResponseMessage response = await _ngrokApi.GetAsync("/api/tunnels");
             if (response.IsSuccessStatusCode)
             {
                 var responseText = await response.Content.ReadAsStringAsync();
                 Debug.WriteLine($"responseText: '{responseText}'");
-                var apiResponse = JsonConvert.DeserializeObject<NgrokTunnelsApiResponse>(responseText);
+                NgrokTunnelsApiResponse apiResponse = JsonConvert.DeserializeObject<NgrokTunnelsApiResponse>(responseText);
                 _tunnels = apiResponse.tunnels;
             }
         }
@@ -162,7 +179,7 @@ namespace NgrokExtensions
             }
 
             Debug.WriteLine($"request: '{JsonConvert.SerializeObject(request)}'");
-            var response = await _ngrokApi.PostAsJsonAsync("/api/tunnels", request);
+            HttpResponseMessage response = await _ngrokApi.PostAsJsonAsync("/api/tunnels", request);
             if (!response.IsSuccessStatusCode)
             {
                 var errorText = await response.Content.ReadAsStringAsync();
@@ -173,7 +190,7 @@ namespace NgrokExtensions
                 {
                     error = JsonConvert.DeserializeObject<NgrokErrorApiResult>(errorText);
                 }
-                catch(JsonReaderException)
+                catch (JsonReaderException)
                 {
                     error = null;
                 }
@@ -202,7 +219,7 @@ namespace NgrokExtensions
 
             var responseText = await response.Content.ReadAsStringAsync();
             Debug.WriteLine($"responseText: '{responseText}'");
-            var tunnel = JsonConvert.DeserializeObject<Tunnel>(responseText);
+            Tunnel tunnel = JsonConvert.DeserializeObject<Tunnel>(responseText);
             config.PublicUrl = tunnel.public_url;
             Debug.WriteLine(config.PublicUrl);
         }
